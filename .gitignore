@@ -1,0 +1,16 @@
+node_modules/
+dist/
+data/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.local
+server.log
+*.log
+cookies.txt
+*.json.tmp
+.DS_Store
+Thumbs.db
+statwise-source.zip
+.freebuff/
