@@ -4,12 +4,13 @@
  * All records are synthetic and labelled per PRD §7/§11.
  */
 const db = require('./db')
+const { hashPassword } = require('./passwords')
 
 function seedIfEmpty () {
   const count = db.prepare('SELECT COUNT(*) AS n FROM users').get().n
   if (count > 0) return
 
-  const insertUser = db.prepare('INSERT INTO users (email, name, role, language) VALUES (?, ?, ?, ?)')
+  const insertUser = db.prepare('INSERT INTO users (email, name, role, language, password_hash, password_salt, email_verified) VALUES (?, ?, ?, ?, ?, ?, 1)')
   const users = [
     ['arjun.mehta@demo.statwise.in', 'Arjun Mehta', 'learner', 'en'],
     ['priya.nair@demo.statwise.in', 'Priya Nair', 'learner', 'en'],
@@ -19,19 +20,28 @@ function seedIfEmpty () {
     ['vikram.rao@demo.statwise.in', 'Vikram Rao', 'trainer', 'en'],
     ['kavya.sharma@demo.statwise.in', 'Kavya Sharma', 'admin', 'en']
   ]
+  // Shared demo password for all seeded accounts, clearly labelled everywhere
+  // in the UI as a demonstration-only credential.
+  const demoPassword = process.env.DEMO_PASSWORD || 'Statwise@2026'
+  const { salt, hash } = hashPassword(demoPassword)
+
   const ids = {}
   for (const [email, name, role, language] of users) {
-    ids[name] = insertUser.run(email, name, role, language).lastInsertRowid
+    ids[name] = insertUser.run(email, name, role, language, hash, salt).lastInsertRowid
   }
 
   const insertProfile = db.prepare(`INSERT INTO learner_profiles
-    (user_id, department, designation, job_role, assignment, education, experience_years, previous_training, interests, self_reported_skills)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    (user_id, department, designation, job_role, assignment, education, experience_years, previous_training, interests, self_reported_skills,
+     current_status, field_of_study, learning_goals, learning_preferences, available_time, onboarding_completed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`)
+  // Seeded learners are established users: their onboarding is complete so the
+  // demo opens on the personalized dashboard. Newly registered accounts go
+  // through the full wizard instead.
   const profiles = [
-    [ids['Arjun Mehta'], 'National Accounts Division', 'Assistant Director', 'Economic Statistician', 'GDP compilation', 'M.Sc. Statistics', 4, 'NSSTA Foundation Course', 'National Accounts, Python', 'Sampling:Proficient;SQL:Developing'],
-    [ids['Priya Nair'], 'Field Operations Division', 'Field Investigator', 'Survey Statistician', 'PLFS field survey', 'B.Sc. Mathematics', 2, 'iGOT Orientation', 'Survey design, Telugu content', 'Survey Design:Developing;Data Visualization:Beginner'],
-    [ids['Rahul Verma'], 'CSO Industrial Statistics', 'Research Officer', 'Industrial Statistician', 'ASI processing', 'M.Sc. Applied Statistics', 7, 'NSSTA Sampling Workshop', 'Data quality, R', 'R:Proficient;Data Quality Frameworks:Developing'],
-    [ids['Sana Khan'], 'SDG Cell, MoSPI', 'Junior Consultant', 'SDG Data Analyst', 'SDG indicator reporting', 'M.A. Economics', 3, 'None', 'SDG indicators, AI/ML', 'SDG Indicators:Developing;Python:Beginner']
+    [ids['Arjun Mehta'], 'National Accounts Division', 'Assistant Director', 'Economic Statistician', 'GDP compilation', 'M.Sc. Statistics', 4, 'NSSTA Foundation Course', 'National Accounts, Python', 'Sampling:Proficient;SQL:Developing', 'government_employee', 'Statistics', JSON.stringify(['Develop professional competency', 'Learn advanced statistical methods']), JSON.stringify(['Case studies', 'Practice questions']), '1_hour'],
+    [ids['Priya Nair'], 'Field Operations Division', 'Field Investigator', 'Survey Statistician', 'PLFS field survey', 'B.Sc. Mathematics', 2, 'iGOT Orientation', 'Survey design, Telugu content', 'Survey Design:Developing;Data Visualization:Beginner', 'government_employee', 'Mathematics', JSON.stringify(['Improve statistical fundamentals']), JSON.stringify(['Video', 'Guided learning']), '30_min'],
+    [ids['Rahul Verma'], 'CSO Industrial Statistics', 'Research Officer', 'Industrial Statistician', 'ASI processing', 'M.Sc. Applied Statistics', 7, 'NSSTA Sampling Workshop', 'Data quality, R', 'R:Proficient;Data Quality Frameworks:Developing', 'working_professional', 'Statistics', JSON.stringify(['Learn data analysis']), JSON.stringify(['Reading', 'Interactive exercises']), '2_hours_plus'],
+    [ids['Sana Khan'], 'SDG Cell, MoSPI', 'Junior Consultant', 'SDG Data Analyst', 'SDG indicator reporting', 'M.A. Economics', 3, 'None', 'SDG indicators, AI/ML', 'SDG Indicators:Developing;Python:Beginner', 'researcher', 'Economics', JSON.stringify(['Improve visualization', 'Prepare for assessments']), JSON.stringify(['Case studies']), '30_min']
   ]
   for (const p of profiles) insertProfile.run(...p)
 
@@ -263,7 +273,10 @@ function seedIfEmpty () {
       JSON.stringify(['Machine-readable formats with clear licences', 'Password-protected archives', 'Printed reports only', 'Proprietary formats']), 'Machine-readable formats with clear licences',
       'Open data means machine-readable, reusable formats under open licences.', 'Open-data standards; PRD framework topic: Open Data', 1]
   ]
-  for (const q of bank) insertQ.run(...q)
+  // Store correct_answer as a JSON array for consistency with every other column.
+  for (const q of bank) {
+    insertQ.run(q[0], q[1], q[2], q[3], JSON.stringify([q[4]]), q[5], q[6], q[7])
+  }
 
   // A published, grounded sample quiz (fallback-mode, clearly labelled)
   const quizId = db.prepare(`INSERT INTO quizzes (title, topic, competency_id, created_by, source_doc_name, source_excerpt, generation_mode, status)

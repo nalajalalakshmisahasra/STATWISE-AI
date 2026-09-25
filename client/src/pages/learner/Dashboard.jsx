@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { api } from '../../lib/api.js'
 import { useApp } from '../../lib/app-context.jsx'
 import { PageTitle, Stat } from '../../components/layout.jsx'
-import { Card, Badge, Button, Spinner, ErrorState, EmptyState, LevelBadge, ProgressBar } from '../../components/ui.jsx'
+import { Card, Badge, Button, Spinner, ErrorState, EmptyState, LevelBadge } from '../../components/ui.jsx'
 import { CompetencyRadar } from '../../components/charts.jsx'
 
 const LEVEL_TO_N = { Beginner: 0, Developing: 1, Proficient: 2, Advanced: 3 }
 
+/** Personalized learner dashboard (spec §7) — backed entirely by /dashboard/me. */
 export default function LearnerDashboard () {
   const { user, t } = useApp()
   const [data, setData] = useState(null)
@@ -17,13 +18,8 @@ export default function LearnerDashboard () {
   async function load () {
     setLoading(true); setErr(null)
     try {
-      const [gaps, recs, results, progress] = await Promise.all([
-        api.get('/api/gaps/me'),
-        api.get('/api/recommendations/me'),
-        api.get('/api/assessments/results'),
-        api.get('/api/progress/me')
-      ])
-      setData({ gaps: gaps.gaps, role: gaps.role, recs: recs.recommendations, results: results.results, progress: progress.progress })
+      const d = await api.get('/api/dashboard/me')
+      setData(d)
     } catch (e) { setErr(e) } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -32,34 +28,83 @@ export default function LearnerDashboard () {
   if (err) return <ErrorState message={err.message} onRetry={load} />
   if (!data) return null
 
-  const { gaps, role, recs, results, progress } = data
-  const openGaps = gaps.filter(g => g.gap > 0)
-  const assessed = gaps.filter(g => g.assessed_level)
-  const radarItems = gaps.filter(g => g.assessed_level).slice(0, 8).map(g => ({
+  const { profile, focus, gaps, last_result, recommendations, quiz_attempts, progress, assigned_activities } = data
+  const radarItems = gaps.top.filter(g => g.assessed_level).slice(0, 8).map(g => ({
     label: g.competency,
     level: LEVEL_TO_N[g.assessed_level] ?? 0,
     expected: LEVEL_TO_N[g.expected_level] ?? 1
   }))
-  const lastResult = results[0]
+  const assessedTotal = data.assessment_count || 0
+  const firstName = user && user.name ? user.name.split(' ')[0] : 'there'
+
+  const FOCUS_LINKS = {
+    onboarding: t('dash.focus.onboarding'),
+    assessment: t('dash.focus.assessment'),
+    activity: t('dash.focus.activity'),
+    gap: t('dash.focus.gap'),
+    reassess: t('dash.focus.reassess')
+  }
 
   return (
     <>
       <PageTitle
-        title={`Welcome back, ${user.name.split(' ')[0]}`}
-        subtitle={role ? `Role framework: ${role}` : 'Set your job role in Profile to see role-based expectations.'}
+        title={`${t('dash.welcome')}, ${firstName}`}
+        subtitle={profile && profile.job_role
+          ? `${t('dash.roleFramework')}: ${profile.job_role}`
+          : t('dash.setRole')}
         actions={<Link to="/learner/assessment"><Button>{t('assess.start')}</Button></Link>}
       />
 
+      {focus && (
+        <div role="status" style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          background: 'var(--teal-100)', border: '1px solid var(--teal-600)', borderRadius: 14,
+          padding: '14px 18px', marginBottom: 22
+        }}>
+          <Badge kind="teal">{FOCUS_LINKS[focus.action] || t('dash.focus.next')}</Badge>
+          <span style={{ flex: 1, minWidth: 220, fontSize: 14.5, color: 'var(--teal-950)', fontWeight: 600 }}>{focus.reason}</span>
+          <Link to={focus.link}><Button size="sm">{t('dash.focus.cta')} →</Button></Link>
+        </div>
+      )}
+
+      {profile && (profile.learning_goals.length > 0 || profile.interests.length > 0) && (
+        <Card style={{ marginBottom: 22 }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 260px' }}>
+              <h3 style={{ fontSize: 14.5, margin: '0 0 8px' }}>{t('dash.yourGoals')}</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {profile.learning_goals.length
+                  ? profile.learning_goals.map(g => <Badge key={g} kind="teal">{g}</Badge>)
+                  : <span style={{ color: 'var(--ink-400)', fontSize: 13.5 }}>{t('dash.noGoals')}</span>}
+              </div>
+            </div>
+            <div style={{ flex: '1 1 260px' }}>
+              <h3 style={{ fontSize: 14.5, margin: '0 0 8px' }}>{t('dash.yourInterests')}</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {profile.interests.length
+                  ? profile.interests.map(i => <Badge key={i}>{i}</Badge>)
+                  : <span style={{ color: 'var(--ink-400)', fontSize: 13.5 }}>{t('dash.noGoals')}</span>}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 22 }}>
-        <Stat label="Open gaps" value={openGaps.length} hint="below role expectation" accent="var(--amber-500)" />
-        <Stat label="Assessed competencies" value={`${assessed.length}/${gaps.length}`} hint="with assessment evidence" />
-        <Stat label="Recommendations" value={recs.length} hint={`${recs.filter(r => r.priority === 'high').length} high priority`} accent="var(--teal-800)" />
-        <Stat label="Last score" value={lastResult ? `${lastResult.score_pct}%` : '—'} hint={lastResult ? lastResult.title : 'no assessment yet'} accent="var(--aqua-500)" />
+        <Stat label={t('dash.stat.gaps')} value={gaps.open} hint={t('dash.stat.belowExpectation')} accent="var(--amber-500)" />
+        <Stat label={t('dash.stat.assessed')} value={`${gaps.total - gaps.top.length + gaps.top.filter(g => g.assessed_level).length}/${gaps.total}`} hint={t('dash.stat.withEvidence')} />
+        <Stat label={t('dash.stat.recs')} value={recommendations.length} hint={`${recommendations.filter(r => r.priority === 'high').length} ${t('dash.stat.highPriority')}`} accent="var(--teal-800)" />
+        <Stat
+          label={t('dash.stat.lastScore')}
+          value={last_result ? `${last_result.score_pct}%` : '—'}
+          hint={last_result ? last_result.title : t('dash.stat.noAssessment')}
+          accent="var(--aqua-500)"
+        />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
         <Card>
-          <h3 style={{ fontSize: 16 }}>Competency overview</h3>
+          <h3 style={{ fontSize: 16 }}>{t('dash.competencyOverview')}</h3>
           {radarItems.length >= 3
             ? (
               <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -67,42 +112,42 @@ export default function LearnerDashboard () {
               </div>
               )
             : (
-              <EmptyState title="Not enough evidence yet" hint="Complete an assessment to see your competency chart.">
+              <EmptyState title={t('dash.radarEmpty.title')} hint={t('dash.radarEmpty.hint')}>
                 <Link to="/learner/assessment"><Button size="sm">{t('assess.start')}</Button></Link>
               </EmptyState>
               )}
           <p style={{ fontSize: 12, color: 'var(--ink-400)', margin: '10px 0 0' }}>
-            Solid line: your assessed level · dashed: role expectation. Illustrative framework, not certification.
+            {t('dash.radarNote')}
           </p>
         </Card>
 
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: 16 }}>Priority gaps</h3>
-            <Link to="/learner/gaps" style={{ fontSize: 13.5, fontWeight: 600 }}>Full report →</Link>
+            <h3 style={{ fontSize: 16 }}>{t('dash.priorityGaps')}</h3>
+            <Link to="/learner/gaps" style={{ fontSize: 13.5, fontWeight: 600 }}>{t('dash.fullReport')} →</Link>
           </div>
-          {openGaps.length === 0
-            ? <EmptyState title="No open gaps" hint="Everything assessed meets role expectations so far." />
+          {gaps.top.length === 0
+            ? <EmptyState title={t('dash.noGaps')} hint={t('dash.noGapsHint')} />
             : (
               <div>
-                {openGaps.slice(0, 4).map((g, i) => (
+                {gaps.top.map((g, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--ink-100)' }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{g.competency}</div>
-                      <div style={{ fontSize: 12.5, color: 'var(--ink-400)' }}>{g.assessed_level || 'Not assessed'} → {g.expected_level} · {g.domain}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ink-400)' }}>{g.assessed_level || t('level.notAssessed')} → {g.expected_level} · {g.domain}</div>
                     </div>
-                    <Badge kind={g.gap >= 2 ? 'red' : 'amber'}>{g.gap} level{g.gap > 1 ? 's' : ''}</Badge>
+                    <Badge kind={g.gap >= 2 ? 'red' : 'amber'}>{g.gap} {g.gap > 1 ? t('dash.levels') : t('dash.level')}</Badge>
                   </div>
                 ))}
               </div>
               )}
           <div style={{ marginTop: 16 }}>
-            <h3 style={{ fontSize: 16, marginBottom: 8 }}>Next steps</h3>
-            {recs.length === 0
-              ? <p style={{ color: 'var(--ink-500)', fontSize: 13.5, margin: 0 }}>Recommendations appear after an assessment or quiz.</p>
+            <h3 style={{ fontSize: 16, marginBottom: 8 }}>{t('dash.recommended')}</h3>
+            {recommendations.length === 0
+              ? <p style={{ color: 'var(--ink-500)', fontSize: 13.5, margin: 0 }}>{t('dash.recsAfterAssessment')}</p>
               : (
                 <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
-                  {recs.slice(0, 3).map(r => (
+                  {recommendations.slice(0, 3).map(r => (
                     <li key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13.5 }}>
                       <Badge kind={r.priority === 'high' ? 'red' : r.priority === 'medium' ? 'amber' : 'teal'}>{r.priority}</Badge>
                       <span>
@@ -117,13 +162,39 @@ export default function LearnerDashboard () {
           </div>
         </Card>
 
+        {assigned_activities.length > 0 && (
+          <Card>
+            <h3 style={{ fontSize: 16, marginBottom: 8 }}>{t('dash.assigned')}</h3>
+            {assigned_activities.map(a => (
+              <Link key={a.id} to={`/learner/activities/${a.id}`} style={{ display: 'block', textDecoration: 'none', color: 'inherit', padding: '9px 0', borderBottom: '1px solid var(--ink-100)' }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{a.title}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--ink-400)' }}>
+                  {a.competency_name}{a.due_date ? ` · ${t('dash.due')} ${String(a.due_date).slice(0, 10)}` : ''}
+                </div>
+              </Link>
+            ))}
+          </Card>
+        )}
+
+        {quiz_attempts.length > 0 && (
+          <Card>
+            <h3 style={{ fontSize: 16, marginBottom: 8 }}>{t('dash.recentQuizzes')}</h3>
+            {quiz_attempts.slice(0, 4).map((q, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--ink-100)' }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{q.title}</span>
+                <Badge kind={q.score_pct >= 85 ? 'green' : q.score_pct >= 60 ? 'teal' : 'amber'}>{q.score_pct}%</Badge>
+              </div>
+            ))}
+          </Card>
+        )}
+
         <Card style={{ gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ fontSize: 16 }}>Recent activity</h3>
-            <Link to="/learner/progress" style={{ fontSize: 13.5, fontWeight: 600 }}>Progress history →</Link>
+            <h3 style={{ fontSize: 16 }}>{t('dash.recentActivity')}</h3>
+            <Link to="/learner/progress" style={{ fontSize: 13.5, fontWeight: 600 }}>{t('dash.progressHistory')} →</Link>
           </div>
           {progress.length === 0
-            ? <EmptyState title="No learning activity yet" hint="Start an assessment or open a recommended resource." />
+            ? <EmptyState title={t('dash.noActivity')} hint={t('dash.noActivityHint')} />
             : (
               <div>
                 {progress.slice(0, 6).map(p => (

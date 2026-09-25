@@ -37,7 +37,7 @@ Delete the `data/` folder to reset the demo.
 ### Test
 
 ```bash
-npm test             # 49 tests: 11 unit + 38 API (RBAC, journeys, validation, honesty labels)
+npm test             # 75 tests: 11 unit + 64 API (auth/OTP, onboarding, personalization, RBAC, journeys, honesty labels, i18n parity)
 npm run typecheck    # tsc --noEmit
 npm run build        # production frontend build
 ```
@@ -48,14 +48,37 @@ npm run build        # production frontend build
 
 | Role    | Email                             | Notes |
 |---------|-----------------------------------|-------|
-| Learner | `arjun.mehta@demo.statwise.in`    | seeded profile, assessment history, quiz attempts |
+| Learner | `arjun.mehta@demo.statwise.in`    | onboarded profile, assessment history, quiz attempts |
 | Learner | `priya.nair@demo.statwise.in`     | |
 | Trainer | `meera.iyer@demo.statwise.in`     | NES-2026 Cohort A (Arjun, Priya) |
 | Trainer | `vikram.rao@demo.statwise.in`     | Industry Stats Program (Rahul, Sana) |
 | Admin   | `kavya.sharma@demo.statwise.in`   | platform analytics |
 
-The landing page offers one-click **demo access** per role. Sessions are signed HTTP-only cookies
-(`server/auth.js`); roles are enforced **server-side on every protected route** — the UI never decides security.
+Password for all seeded demo accounts: **`Statwise@2026`** (demonstration-only credential; change via
+`DEMO_PASSWORD` when seeding). The landing page offers one-click **demo access** per role, and you can
+**register a brand-new account** to experience the full journey: register → 6-digit OTP verification →
+role selection → 7-step learner onboarding → personalized dashboard.
+
+### Authentication & verification
+
+- Registration: server-side validation (name/email/password/role); scrypt-hashed passwords (per-user salt).
+- Verification: 6-digit code — hashed at rest, 10-minute expiry, max 5 attempts, 30-second resend cooldown,
+  max 5 resends, login lockout after 5 failed passwords (10 minutes). **No email/SMS provider is configured:**
+  delivery falls back to a development mode that shows the code in the UI behind an explicit
+  *“Development delivery”* label and logs it server-side. Nothing claims to have been emailed.
+- Roles are decided **server-side**: registration accepts only `learner`/`trainer` (trainer is promoted after
+  verification). A client claiming `admin` gets an explicit 400 — administrator accounts are provisioned
+  separately (seed), never by self-registration.
+- Sessions: signed HTTP-only cookies (`server/auth.js`); roles are enforced **server-side on every protected
+  route** — the UI never decides security.
+
+### Learner onboarding
+
+After verification a learner completes a 7-step wizard (status, field, interests, goals, self-reported levels,
+learning preferences, available time + job role). Every step is persisted server-side as it is entered; the
+route guard sends any learner with incomplete onboarding back to the wizard (refresh-safe), and completed
+learners can edit everything later in **Profile**. Self-reported levels are stored but **never** used as
+competency evidence — assessments, quizzes and activities are.
 
 ---
 
@@ -127,8 +150,11 @@ government-ecosystem resource discovery.
 
 ## Multilingual
 
-English (complete), Hindi, Telugu, Tamil (essential navigation, actions, headings, validation, key workflow
-copy). Selection persists (localStorage + server profile) and immediately re-renders the interface.
+English (complete), Hindi, Telugu, Tamil — covering navigation, auth, registration, OTP verification,
+onboarding, dashboard, assessments, gaps, recommendations, activities, quizzes, assistant, profile, trainer
+and admin surfaces, empty/loading/error states. Language is chosen **before** authentication on the Welcome
+screen, persists through registration/login, is saved to the user profile, and immediately re-renders the
+whole interface.
 
 ## AI behaviour (honest by design)
 
@@ -167,14 +193,21 @@ repository; server-only values are never exposed to the browser bundle.
 
 ## Manual demo script (mirrors PRD §13)
 
-1. Open the landing page, switch language (EN → हिन्दी → తెలుగు → தமிழ்), switch back.
-2. Enter as **Learner** → edit Profile (role drives expectations).
-3. Start + submit an Assessment → review per-question feedback.
-4. Open **Skill Gaps** → evidence, limitations, next steps.
-5. Open **Recommendations** → rationale, provider labels, mark one complete.
-6. Complete an **Activity** (case study) with a reflection.
-7. Generate a quiz from the sample document → note the honest fallback label.
-8. Sign out → enter as **Trainer** → review queue → edit + publish the quiz.
-9. As learner, take the published quiz → see score + adaptive next step.
-10. Sign out → enter as **Administrator** → analytics, filters, resources, framework, users.
+1. Open the app → **Welcome** screen: choose language (English / हिन्दी / తెలుగు / தமிழ்).
+2. **Register** a new learner (name, email, password, role) → the 6-digit code appears in the labelled
+   *Development delivery* box → verify.
+3. Complete the **7-step onboarding** wizard (status → field → interests → goals → self-levels →
+   preferences → time + job role). Refresh mid-way to see persistence.
+4. **Dashboard**: personalized welcome, goals/interests, and the evidence-based next-step banner
+   (“Complete your initial assessment…”).
+5. Start + submit an **Assessment** (questions weighted to your role) → review per-question feedback.
+6. Open **Skill Gaps** → evidence, limitations, next steps — gaps come from assessment evidence only.
+7. Open **Recommendations** → every card shows *why* it was recommended (gap evidence, or interest/goal
+   relevance) — mark one complete and watch progress update.
+8. Complete an **Activity** (case study) with a reflection; take a **Quiz** → adaptive next step.
+9. Reassess → gaps and recommendations update from the new evidence.
+10. Sign out → enter as **Trainer** (scope-isolated cohort) → review queue → edit + publish a quiz.
+11. Sign out → enter as **Administrator** → analytics, filters, resources, framework, users, integrations.
+12. Sign in as the demo learner instead (`arjun.mehta@demo.statwise.in` / `Statwise@2026`) to skip onboarding
+    and land directly on the populated dashboard.
 11. Open **Integrations** → confirm every status label is honest.

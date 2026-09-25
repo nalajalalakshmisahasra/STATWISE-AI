@@ -59,7 +59,7 @@ export default function QuizTake () {
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 13.8, margin: '5px 0 2px' }}>{b.prompt}</div>
                 <div style={{ fontSize: 13 }}>
-                  Your answer: <strong>{Array.isArray(b.your_answer) ? b.your_answer.join(', ') : '—'}</strong>
+                  Your answer: <strong>{Array.isArray(b.your_answer) ? b.your_answer.join(', ') : (b.your_answer == null || b.your_answer === '' ? '—' : String(b.your_answer))}</strong>
                   {!b.is_correct && <span> · Correct: <strong style={{ color: 'var(--success)' }}>{b.correct_answer.join(', ')}</strong></span>}
                 </div>
                 {b.explanation && <div style={{ fontSize: 12.8, color: 'var(--ink-500)', marginTop: 2 }}>{b.explanation}</div>}

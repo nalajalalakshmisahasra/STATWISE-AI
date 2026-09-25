@@ -4,10 +4,12 @@ import { useApp } from './lib/app-context.jsx'
 import { Spinner } from './components/ui.jsx'
 import { WorkspaceShell } from './components/layout.jsx'
 import Landing from './pages/Landing.jsx'
+import Welcome from './pages/Welcome.jsx'
 import Login from './pages/Login.jsx'
 
 import LearnerDashboard from './pages/learner/Dashboard.jsx'
 import LearnerProfile from './pages/learner/Profile.jsx'
+import Onboarding from './pages/learner/Onboarding.jsx'
 import Assessment from './pages/learner/Assessment.jsx'
 import Gaps from './pages/learner/Gaps.jsx'
 import Recommendations from './pages/learner/Recommendations.jsx'
@@ -31,21 +33,43 @@ import AdminFramework from './pages/admin/Framework.jsx'
 import AdminUsers from './pages/admin/Users.jsx'
 import AdminIntegrations from './pages/admin/Integrations.jsx'
 
+/**
+ * Frontend route guard. The backend enforces the same rules server-side
+ * (requireRole + ownership checks); this guard is UX, not security.
+ *
+ * Routing rules:
+ *  - unauthenticated           → /welcome (or the attempted page after login)
+ *  - unverified learner        → handled at login/verify time (session starts verified)
+ *  - learner w/o onboarding    → /learner/onboarding (all learner routes)
+ *  - role mismatch             → that role's workspace home (never exposes data)
+ */
 function Guard ({ role, children }) {
   const { user } = useApp()
   const location = useLocation()
   if (user === undefined) return <div style={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}><Spinner /></div>
-  if (!user || user.role !== role) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!user) return <Navigate to="/welcome" state={{ from: location }} replace />
+
+  const home = user.role === 'learner' ? '/learner' : user.role === 'trainer' ? '/trainer' : '/admin'
+  if (user.role !== role) return <Navigate to={home} replace />
+
+  if (user.role === 'learner' && user.onboarding_completed === false && location.pathname !== '/learner/onboarding') {
+    return <Navigate to="/learner/onboarding" replace />
+  }
+  if (user.role === 'learner' && user.onboarding_completed === true && location.pathname === '/learner/onboarding') {
+    return <Navigate to="/learner" replace />
+  }
   return <WorkspaceShell role={role}>{children}</WorkspaceShell>
 }
 
 export default function App () {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Welcome />} />
+      <Route path="/home" element={<Landing />} />
       <Route path="/login" element={<Login />} />
 
       <Route path="/learner" element={<Guard role="learner"><LearnerDashboard /></Guard>} />
+      <Route path="/learner/onboarding" element={<Guard role="learner"><Onboarding /></Guard>} />
       <Route path="/learner/profile" element={<Guard role="learner"><LearnerProfile /></Guard>} />
       <Route path="/learner/assessment" element={<Guard role="learner"><Assessment /></Guard>} />
       <Route path="/learner/gaps" element={<Guard role="learner"><Gaps /></Guard>} />

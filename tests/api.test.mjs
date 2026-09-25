@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import harness from './setup.mjs'
 
-const { start, stop, client, loginAs } = harness
+const { start, stop, client, loginAs, db } = harness
 
 let url
 beforeAll(async () => { url = await start() })
@@ -29,16 +29,28 @@ describe('auth & sessions', () => {
     expect(r.data.user.email).toContain('@demo.statwise.in')
   })
 
-  it('email login works for seeded accounts', async () => {
+  it('email+password login works for seeded accounts', async () => {
     const c = client()
-    const r = await c.post('/api/auth/login', { email: 'priya.nair@demo.statwise.in' })
+    const r = await c.post('/api/auth/login', { email: 'priya.nair@demo.statwise.in', password: 'Statwise@2026' })
     expect(r.status).toBe(200)
     expect(r.data.user.role).toBe('learner')
   })
 
+  it('login without password is rejected (400)', async () => {
+    const c = client()
+    const r = await c.post('/api/auth/login', { email: 'priya.nair@demo.statwise.in' })
+    expect(r.status).toBe(400)
+  })
+
+  it('wrong password is rejected (401) and never leaks lockout state', async () => {
+    const c = client()
+    const r = await c.post('/api/auth/login', { email: 'priya.nair@demo.statwise.in', password: 'nope-wrong' })
+    expect(r.status).toBe(401)
+  })
+
   it('rejects unknown email', async () => {
     const c = client()
-    const r = await c.post('/api/auth/login', { email: 'nobody@nowhere.example' })
+    const r = await c.post('/api/auth/login', { email: 'nobody@nowhere.example', password: 'Whatever123' })
     expect(r.status).toBe(401)
   })
 
@@ -134,6 +146,27 @@ describe('learner journey: profile → assessment → gaps → recommendations',
       expect(Array.isArray(b.correct_answer)).toBe(true)
     }
     expect(done.data.gaps.length).toBeGreaterThan(0)
+  })
+
+  it('actually credits correct answers — a fully-correct submission scores 100%', async () => {
+    const c = await loginAs('learner')
+    const start = await c.post('/api/assessments', {})
+    expect(start.status).toBe(201)
+    // The submit route stores responses as JSON.stringify; scoring must grade
+    // the real answer, not the quoted stored string. This test previously
+    // passed vacuously because it only checked that is_correct was a boolean.
+    const dbi = db()
+    const responses = {}
+    for (const q of start.data.questions) {
+      const row = dbi.prepare('SELECT correct_answer FROM questions WHERE id = ?').get(q.id)
+      const answers = JSON.parse(row.correct_answer)
+      responses[q.id] = Array.isArray(answers) && answers.length > 1 ? answers : answers[0]
+    }
+    const done = await c.post(`/api/assessments/${start.data.assessment.id}/submit`, { responses })
+    expect(done.status).toBe(200)
+    expect(done.data.result.score_pct).toBe(100)
+    expect(done.data.result.correct_count).toBe(start.data.questions.length)
+    for (const b of done.data.breakdown) expect(b.is_correct).toBe(true)
   })
 
   it('prevents double submission of the same assessment', async () => {

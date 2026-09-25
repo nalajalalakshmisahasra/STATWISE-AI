@@ -63,4 +63,12 @@ async function loginAs (role) {
   return c
 }
 
-module.exports = { start, stop, client, loginAs }
+/**
+ * The same database instance the running app uses (shared CJS require cache).
+ * Lets tests read ground truth (e.g. correct answers) without weakening APIs.
+ */
+function db () {
+  return require('../server/db.js')
+}
+
+module.exports = { start, stop, client, loginAs, db }

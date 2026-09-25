@@ -7,9 +7,11 @@
 const express = require('express')
 const db = require('./db')
 const { requireRole, createSession, destroySession } = require('./auth')
-const { generateRecommendations, gapReport, completeAssessment, adaptiveNextStep, recomputeGapsFromProgress } = require('./services')
+const { generateRecommendations, gapReport, completeAssessment, adaptiveNextStep, recomputeGapsFromProgress, dashboardData } = require('./services')
 const { generateQuizQuestions, assistantReply, isLive } = require('./ai')
 const { extractText, SAMPLE_DOC, validateUpload } = require('./extract')
+const { hashPassword, verifyPassword, generateOtp, verifyOtp } = require('./passwords')
+const otpDelivery = require('./otp')
 
 const router = express.Router()
 
@@ -17,41 +19,246 @@ function parseJson (s, fallback) {
   try { return JSON.parse(s) } catch { return fallback }
 }
 
+/** correct_answer may be a JSON array (standard) or a legacy bare string. */
+function correctAnswer (row) {
+  return row && row.correct_answer ? String(row.correct_answer).trim().startsWith('[') ? row.correct_answer : JSON.stringify([String(row.correct_answer)]) : '[]'
+}
+
 function httpError (res, status, message) {
   return res.status(status).json({ error: message })
 }
 
-// ---------- Auth / demo sessions ----------
+/** Parse a timestamp stored as either SQLite UTC 'YYYY-MM-DD HH:MM:SS' or ISO 8601. */
+function parseStoredTime (s) {
+  if (!s) return null
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z').getTime()
+  return new Date(s).getTime()
+}// ---------- Auth: register / verify / login / demo / logout ----------
 const DEMO_USERS = {
   learner: { email: 'arjun.mehta@demo.statwise.in' },
   trainer: { email: 'meera.iyer@demo.statwise.in' },
   admin: { email: 'kavya.sharma@demo.statwise.in' }
 }
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+const OTP_TTL_MS = 10 * 60 * 1000 // code expires after 10 minutes
+const OTP_RESEND_COOLDOWN_MS = 30 * 1000 // min gap between sends
+const OTP_MAX_ATTEMPTS = 5
+const OTP_MAX_RESENDS = 5
+const LOGIN_MAX_FAILS = 5
+const LOGIN_LOCK_MINUTES = 10
+
+function userPublic (u) {
+  if (!u) return null
+  const prof = db.prepare('SELECT onboarding_completed FROM learner_profiles WHERE user_id = ?').get(u.id)
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    language: u.language,
+    email_verified: Boolean(u.email_verified),
+    onboarding_completed: prof ? Boolean(prof.onboarding_completed) : false
+  }
+}
+
+function getFullUser (id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id)
+}
+
+/** Issue (or re-issue) a verification code with expiry, attempt and resend caps. */
+function issueVerification (user) {
+  const now = Date.now()
+  if (user.verification_last_sent) {
+    const since = now - parseStoredTime(user.verification_last_sent)
+    if (since < OTP_RESEND_COOLDOWN_MS) {
+      const wait = Math.ceil((OTP_RESEND_COOLDOWN_MS - since) / 1000)
+      return { error: `Please wait ${wait}s before requesting another code.` }
+    }
+  }
+  if (user.verification_resends >= OTP_MAX_RESENDS) {
+    return { error: 'Maximum resend attempts reached. Contact an administrator.' }
+  }
+  const { code, salt, hash } = generateOtp()
+  const expires = new Date(now + OTP_TTL_MS).toISOString()
+  db.prepare('UPDATE users SET verification_code_hash = ?, verification_salt = ?, verification_expires = ?, verification_attempts = 0, verification_resends = verification_resends + 1, verification_last_sent = ? WHERE id = ?')
+    .run(hash, salt, expires, new Date(now).toISOString(), user.id)
+  return { code }
+}
+
+/** Send a verification code through the configured provider (or dev fallback). */
+async function sendVerification (user, code, purpose) {
+  const result = await otpDelivery.deliver({ email: user.email, code, purpose })
+  // dev fallback returns dev_code so the register response can show a labelled hint
+  return result
+}
+
 router.get('/auth/me', (req, res) => {
   if (!req.user) return res.json({ user: null })
-  const u = db.prepare('SELECT id, email, name, role, language FROM users WHERE id = ?').get(req.user.sub)
+  const u = getFullUser(req.user.sub)
   if (!u) return res.json({ user: null })
-  const profile = db.prepare('SELECT * FROM learner_profiles WHERE user_id = ?').get(u.id)
-  res.json({ user: { ...u, hasProfile: Boolean(profile) } })
+  const profile = db.prepare('SELECT onboarding_completed FROM learner_profiles WHERE user_id = ?').get(u.id)
+  res.json({
+    user: {
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      language: u.language,
+      email_verified: Boolean(u.email_verified),
+      onboarding_completed: profile ? Boolean(profile.onboarding_completed) : false
+    }
+  })
 })
 
 router.post('/auth/demo', (req, res) => {
   const role = req.body && req.body.role
   if (!DEMO_USERS[role]) return httpError(res, 400, 'Invalid role. Use learner, trainer or admin.')
-  const user = db.prepare('SELECT id, email, name, role, language FROM users WHERE email = ?').get(DEMO_USERS[role].email)
-  if (!user) return httpError(res, 500, 'Demo user missing; reseed database.')
+  const row = db.prepare('SELECT id FROM users WHERE email = ?').get(DEMO_USERS[role].email)
+  const user = row ? getFullUser(row.id) : null
+  if (!user || user.email_verified !== 1) return httpError(res, 500, 'Demo user missing; reseed database.')
   createSession(res, user)
-  res.json({ user })
+  res.json({ user: userPublic(user) })
 })
 
-router.post('/auth/login', (req, res) => {
-  const { email } = req.body || {}
-  if (!email || typeof email !== 'string') return httpError(res, 400, 'Email is required.')
-  const user = db.prepare('SELECT id, email, name, role, language FROM users WHERE email = ?').get(email.toLowerCase().trim())
-  if (!user) return httpError(res, 401, 'No demo account with that email. Use demo access or a seeded demo email.')
+router.post('/auth/register', async (req, res) => {
+  const b = req.body || {}
+  const errors = []
+  if (!b.name || typeof b.name !== 'string' || b.name.trim().length < 2 || b.name.length > 100) errors.push('Name is required (2–100 characters).')
+  if (!b.email || typeof b.email !== 'string' || !EMAIL_RE.test(b.email) || b.email.length > 200) errors.push('A valid email address is required.')
+  if (!b.password || typeof b.password !== 'string' || b.password.length < 8 || b.password.length > 128) errors.push('Password must be 8–128 characters.')
+  if (b.role !== undefined && b.role !== null && !['learner', 'trainer'].includes(b.role)) {
+    // An explicit non-registrable role claim (e.g. 'admin') is a validation
+    // error — but it must never be a privilege-escalation path.
+    errors.push("Role must be 'learner' or 'trainer'. Administrator accounts are provisioned separately.")
+  }
+  if (errors.length) return httpError(res, 400, errors.join(' '))
+
+  const email = b.email.toLowerCase().trim()
+  const existing = db.prepare('SELECT id, email_verified FROM users WHERE email = ?').get(email)
+  if (existing && existing.email_verified === 1) return httpError(res, 409, 'An account with this email already exists.')
+
+  const { salt, hash } = hashPassword(b.password)
+  const requestedRole = (b.role === 'trainer') ? 'trainer' : 'learner'
+  const lang = ['en', 'hi', 'te', 'ta'].includes(b.language) ? b.language : 'en'
+
+  let userId
+  if (existing) {
+    // Unverified re-registration: refresh credentials + code (rate-limited below).
+    db.prepare('UPDATE users SET name = ?, password_hash = ?, password_salt = ?, language = ?, role_pending = ?, verification_resends = 0 WHERE id = ?')
+      .run(b.name.trim(), hash, salt, lang, requestedRole, existing.id)
+    userId = existing.id
+  } else {
+    // Role is decided SERVER-SIDE: accounts activate as 'learner'; a requested
+    // trainer role is stored as pending and promoted at verification. A client
+    // claiming 'admin' gets an ordinary learner account.
+    userId = db.prepare('INSERT INTO users (email, name, role, language, password_hash, password_salt, role_pending) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(email, b.name.trim(), 'learner', lang, hash, salt, requestedRole === 'trainer' ? 'trainer' : null).lastInsertRowid
+  }
+
+  const user = getFullUser(userId)
+  const issued = issueVerification(user)
+  if (issued.error) return httpError(res, 429, issued.error)
+  const delivered = await sendVerification(user, issued.code, 'register')
+
+  res.status(201).json({
+    ok: true,
+    email,
+    verification_required: true,
+    delivery: {
+      channel: delivered.channel,
+      delivered: delivered.delivered,
+      dev_code: delivered.dev_code || null // present ONLY in development fallback
+    },
+    requested_role: requestedRole
+  })
+})
+
+router.post('/auth/verify', async (req, res) => {
+  const b = req.body || {}
+  const email = b.email ? String(b.email).toLowerCase().trim() : null
+  const code = b.code ? String(b.code).trim() : null
+  if (!email || !code) return httpError(res, 400, 'Email and 6-digit code are required.')
+  if (!/^\d{6}$/.test(code)) return httpError(res, 400, 'Code must be exactly 6 digits.')
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
+  if (!user) return httpError(res, 404, 'No pending registration for this email.')
+  if (user.email_verified === 1) return httpError(res, 409, 'Email already verified — please sign in.')
+
+  // Expiry
+  if (!user.verification_expires || Date.now() > parseStoredTime(user.verification_expires)) {
+    return httpError(res, 410, 'This code has expired. Request a new one.')
+  }
+  // Attempt cap
+  if (user.verification_attempts >= OTP_MAX_ATTEMPTS) {
+    return httpError(res, 429, 'Too many incorrect attempts. Request a new code.')
+  }
+  // Verify against stored hash
+  if (!verifyOtp(code, user.verification_salt, user.verification_code_hash)) {
+    db.prepare('UPDATE users SET verification_attempts = verification_attempts + 1 WHERE id = ?').run(user.id)
+    const left = OTP_MAX_ATTEMPTS - (user.verification_attempts + 1)
+    return httpError(res, 401, left > 0 ? `Incorrect code. ${left} attempt${left === 1 ? '' : 's'} remaining.` : 'Incorrect code. Request a new code.')
+  }
+
+  // Promote pending role (learner default; trainer promotion on verify; admin never self-service)
+  const finalRole = user.role_pending === 'trainer' ? 'trainer' : user.role
+  db.prepare('UPDATE users SET email_verified = 1, role = ?, role_pending = NULL, verification_code_hash = NULL, verification_salt = NULL, verification_expires = NULL, verification_attempts = 0, verification_resends = 0 WHERE id = ?')
+    .run(finalRole, user.id)
+
+  const fresh = getFullUser(user.id)
+  createSession(res, fresh)
+  res.json({ ok: true, user: userPublic(fresh) })
+})
+
+router.post('/auth/resend', async (req, res) => {
+  const b = req.body || {}
+  const email = b.email ? String(b.email).toLowerCase().trim() : null
+  if (!email) return httpError(res, 400, 'Email is required.')
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
+  if (!user) return httpError(res, 404, 'No pending registration for this email.')
+  if (user.email_verified === 1) return httpError(res, 409, 'Email already verified — please sign in.')
+  const issued = issueVerification(user)
+  if (issued.error) return httpError(res, 429, issued.error)
+  const delivered = await sendVerification(user, issued.code, 'resend')
+  res.json({ ok: true, delivery: { channel: delivered.channel, delivered: delivered.delivered, dev_code: delivered.dev_code || null } })
+})
+
+router.post('/auth/login', async (req, res) => {
+  const b = req.body || {}
+  const email = b.email ? String(b.email).toLowerCase().trim() : null
+  const password = b.password ? String(b.password) : null
+  if (!email || !password) return httpError(res, 400, 'Email and password are required.')
+  if (!EMAIL_RE.test(email)) return httpError(res, 400, 'Please enter a valid email address.')
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
+  if (!user || !user.password_hash) {
+    return httpError(res, 401, 'Incorrect email or password.')
+  }
+  if (user.locked_until && Date.now() < parseStoredTime(user.locked_until)) {
+    const mins = Math.ceil((parseStoredTime(user.locked_until) - Date.now()) / 60000)
+    return httpError(res, 423, `Account temporarily locked after repeated failed logins. Try again in ~${mins} min.`)
+  }
+  if (!verifyPassword(password, user.password_salt, user.password_hash)) {
+    const fails = (user.failed_logins || 0) + 1
+    if (fails >= LOGIN_MAX_FAILS) {
+      db.prepare('UPDATE users SET failed_logins = 0, locked_until = ? WHERE id = ?').run(new Date(Date.now() + LOGIN_LOCK_MINUTES * 60000).toISOString(), user.id)
+      return httpError(res, 423, 'Account temporarily locked after repeated failed logins. Try again later.')
+    }
+    db.prepare('UPDATE users SET failed_logins = ? WHERE id = ?').run(fails, user.id)
+    return httpError(res, 401, 'Incorrect email or password.')
+  }
+  if (user.email_verified !== 1) {
+    const issued = issueVerification(user)
+    if (issued.error) return httpError(res, 429, issued.error)
+    await sendVerification(user, issued.code, 'login-unverified')
+    return res.status(403).json({
+      error: 'Email not verified. A fresh verification code was issued.',
+      verification_required: true,
+      email: user.email,
+      delivery: { channel: 'dev', delivered: false, dev_code: issued.code }
+  })
+  }
+  db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?').run(user.id)
   createSession(res, user)
-  res.json({ user })
+  res.json({ user: userPublic(user) })
 })
 
 router.post('/auth/logout', (req, res) => {
@@ -67,11 +274,66 @@ router.post('/auth/language', requireRole(), (req, res) => {
 })
 
 // ---------- Profiles ----------
-const PROFILE_FIELDS = ['department', 'designation', 'job_role', 'assignment', 'education', 'experience_years', 'previous_training', 'interests', 'self_reported_skills']
+const PROFILE_FIELDS = ['department', 'designation', 'job_role', 'assignment', 'education', 'experience_years', 'previous_training', 'interests', 'self_reported_skills', 'current_status', 'field_of_study', 'learning_goals', 'skill_levels', 'learning_preferences', 'available_time', 'onboarding_completed']
+
+function normalizeProfileValue (field, value, errors) {
+  if (value === undefined) return null
+  switch (field) {
+    case 'experience_years':
+      return null
+    case 'current_status':
+      if (value === null) return null
+      if (!['student', 'working_professional', 'researcher', 'government_employee', 'trainer', 'other'].includes(value)) {
+        errors.push('current_status has an invalid value.')
+        return null
+      }
+      return value
+    case 'field_of_study':
+      return typeof value === 'string' ? value.slice(0, 120) : null
+    case 'learning_goals':
+    case 'learning_preferences':
+    case 'interests': {
+      if (field === 'interests' && typeof value === 'string') {
+        // Legacy comma-separated storage — keep as-is.
+        return value.slice(0, 500)
+      }
+      if (!Array.isArray(value)) { errors.push(field + ' must be an array.'); return null }
+      const clean = value.filter(v => typeof v === 'string').map(v => v.slice(0, 120)).slice(0, 20)
+      return JSON.stringify(clean)
+    }
+    case 'skill_levels': {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) { errors.push('skill_levels must be an object.'); return null }
+      const LEVELS = ['Beginner', 'Intermediate', 'Advanced']
+      const clean = {}
+      for (const [k, v] of Object.entries(value)) {
+        if (typeof k === 'string' && LEVELS.includes(v)) clean[k.slice(0, 120)] = v
+      }
+      return JSON.stringify(clean)
+    }
+    case 'available_time':
+      if (value === null) return null
+      if (!['15_min', '30_min', '1_hour', '2_hours_plus'].includes(value)) {
+        errors.push('available_time has an invalid value.')
+        return null
+      }
+      return value
+    case 'onboarding_completed':
+      return value ? 1 : 0
+    default:
+      return typeof value === 'string' ? value.slice(0, 300) : null
+  }
+}
 
 router.get('/profiles/me', requireRole('learner'), (req, res) => {
   const profile = db.prepare('SELECT * FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
-  res.json({ profile: profile || null })
+  if (!profile) return res.json({ profile: null })
+  const out = { ...profile }
+  for (const f of ['learning_goals', 'skill_levels', 'learning_preferences', 'interests']) {
+    if (out[f]) {
+      try { out[f] = JSON.parse(out[f]) } catch { /* legacy comma string — leave raw */ }
+    }
+  }
+  res.json({ profile: out })
 })
 
 router.put('/profiles/me', requireRole('learner'), (req, res) => {
@@ -81,17 +343,74 @@ router.put('/profiles/me', requireRole('learner'), (req, res) => {
   if (b.experience_years !== undefined && b.experience_years !== null && (typeof b.experience_years !== 'number' || b.experience_years < 0 || b.experience_years > 50)) errors.push('Experience must be a number between 0 and 50.')
   if (errors.length) return httpError(res, 400, errors.join(' '))
 
+  const norm = {}
+  for (const f of PROFILE_FIELDS) {
+    if (f === 'experience_years') {
+      norm[f] = (b[f] === undefined || b[f] === '') ? null : Number(b[f])
+    } else {
+      norm[f] = normalizeProfileValue(f, b[f], errors)
+    }
+  }
+  if (errors.length) return httpError(res, 400, errors.join(' '))
+
   const existing = db.prepare('SELECT id FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
-  const vals = PROFILE_FIELDS.map(f => (b[f] === undefined ? null : b[f]))
   if (existing) {
-    db.prepare(`UPDATE learner_profiles SET ${PROFILE_FIELDS.map(f => `${f} = ?`).join(', ')}, updated_at = datetime('now') WHERE user_id = ?`).run(...vals, req.user.sub)
+    // Merge semantics: fields not sent in the payload keep their stored value.
+    const sent = PROFILE_FIELDS.filter(f => b[f] !== undefined)
+    db.prepare(`UPDATE learner_profiles SET ${sent.map(f => `${f} = ?`).join(', ')}, updated_at = datetime('now') WHERE user_id = ?`).run(...sent.map(f => norm[f]), req.user.sub)
   } else {
+    const vals = PROFILE_FIELDS.map(f => (f in norm ? norm[f] : (f === 'onboarding_completed' ? 0 : null)))
     db.prepare(`INSERT INTO learner_profiles (user_id, ${PROFILE_FIELDS.join(', ')}) VALUES (?, ${PROFILE_FIELDS.map(() => '?').join(', ')})`).run(req.user.sub, ...vals)
   }
-  // Re-key gaps against the new role expectations
+  // Re-key gaps against the (possibly new) role expectations
   recomputeGapsFromProgress(req.user.sub)
   const profile = db.prepare('SELECT * FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
-  res.json({ profile })
+  const out = { ...profile }
+  for (const f of ['learning_goals', 'skill_levels', 'learning_preferences', 'interests']) {
+    if (out[f]) {
+      try { out[f] = JSON.parse(out[f]) } catch { /* legacy comma string — leave raw */ }
+    }
+  }
+  res.json({ profile: out })
+})
+
+// Dedicated onboarding save: applies partial updates then marks completion atomically.
+router.post('/profiles/onboarding', requireRole('learner'), (req, res) => {
+  const b = req.body || {}
+  const errors = []
+  const norm = {}
+  for (const f of PROFILE_FIELDS) {
+    if (b[f] !== undefined) norm[f] = normalizeProfileValue(f, b[f], errors)
+  }
+  if (errors.length) return httpError(res, 400, errors.join(' '))
+  if (b.complete === true && !b.job_role) {
+    // job_role remains the single source of truth for role expectations
+    return httpError(res, 400, 'job_role is required to complete onboarding.')
+  }
+  const fields = Object.keys(norm)
+  const existing = db.prepare('SELECT id FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
+  if (existing) {
+    if (fields.length) {
+      db.prepare(`UPDATE learner_profiles SET ${fields.map(f => `${f} = ?`).join(', ')}, updated_at = datetime('now') WHERE user_id = ?`).run(...fields.map(f => norm[f]), req.user.sub)
+    } else if (b.complete === true) {
+      db.prepare("UPDATE learner_profiles SET onboarding_completed = 1, updated_at = datetime('now') WHERE user_id = ?").run(req.user.sub)
+    }
+  } else {
+    const vals = PROFILE_FIELDS.map(f => (f in norm ? norm[f] : (f === 'onboarding_completed' ? 0 : null)))
+    db.prepare(`INSERT INTO learner_profiles (user_id, ${PROFILE_FIELDS.join(', ')}) VALUES (?, ${PROFILE_FIELDS.map(() => '?').join(', ')})`).run(req.user.sub, ...vals)
+  }
+  if (b.complete === true && fields.length) {
+    db.prepare("UPDATE learner_profiles SET onboarding_completed = 1, updated_at = datetime('now') WHERE user_id = ?").run(req.user.sub)
+  }
+  recomputeGapsFromProgress(req.user.sub)
+  const profile = db.prepare('SELECT * FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
+  const out = { ...profile }
+  for (const f of ['learning_goals', 'skill_levels', 'learning_preferences', 'interests']) {
+    if (out[f]) {
+      try { out[f] = JSON.parse(out[f]) } catch { /* legacy comma string — leave raw */ }
+    }
+  }
+  res.json({ profile: out, onboarding_completed: Boolean(profile && profile.onboarding_completed) })
 })
 
 // ---------- Competencies ----------
@@ -119,6 +438,11 @@ router.put('/competencies/:id', requireRole('admin'), (req, res) => {
   res.json({ competency: db.prepare('SELECT * FROM competencies WHERE id = ?').get(comp.id) })
 })
 
+// ---------- Personalized dashboard ----------
+router.get('/dashboard/me', requireRole('learner'), (req, res) => {
+  res.json(dashboardData(req.user.sub))
+})
+
 // ---------- Assessments ----------
 router.get('/assessments/current', requireRole('learner'), (req, res) => {
   const open = db.prepare(`SELECT * FROM assessments WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1`).get(req.user.sub)
@@ -130,14 +454,34 @@ router.get('/assessments/current', requireRole('learner'), (req, res) => {
   })
 })
 
+// Questions are reusable once their original assessment is completed — the
+// reassessment loop requires a stable bank. Only in-progress assessments hold
+// an exclusive lock on their questions.
+const AVAILABLE_QUESTIONS = "(assessment_id IS NULL OR assessment_id IN (SELECT id FROM assessments WHERE status = 'completed'))"
+
 router.post('/assessments', requireRole('learner'), (req, res) => {
   const { competency_ids } = req.body || {}
+  const profile = db.prepare('SELECT job_role, field_of_study FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
   let pool
   if (Array.isArray(competency_ids) && competency_ids.length) {
     const placeholders = competency_ids.map(() => '?').join(',')
-    pool = db.prepare(`SELECT * FROM questions WHERE assessment_id IS NULL AND competency_id IN (${placeholders}) ORDER BY RANDOM()`).all(...competency_ids.map(Number))
+    pool = db.prepare(`SELECT * FROM questions WHERE ${AVAILABLE_QUESTIONS} AND competency_id IN (${placeholders}) ORDER BY RANDOM()`).all(...competency_ids.map(Number))
+  } else if (profile && profile.job_role) {
+    // Personalized default: questions weighted toward the competencies this
+    // learner's role actually requires, so the assessment produces a meaningful
+    // gap report. Falls back to the full bank whenever the role pool is thin.
+    const comps = db.prepare(`SELECT r.competency_id FROM role_competency_requirements r
+      JOIN learner_profiles p ON p.user_id = ? AND r.job_role = p.job_role`).all(req.user.sub)
+    if (comps.length >= 4) {
+      const ids = comps.map(c => c.competency_id)
+      const placeholders = ids.map(() => '?').join(',')
+      pool = db.prepare(`SELECT * FROM questions WHERE ${AVAILABLE_QUESTIONS} AND competency_id IN (${placeholders}) ORDER BY RANDOM()`).all(...ids)
+    }
+    if (!pool || pool.length < 4) {
+      pool = db.prepare(`SELECT * FROM questions WHERE ${AVAILABLE_QUESTIONS} ORDER BY RANDOM()`).all()
+    }
   } else {
-    pool = db.prepare('SELECT * FROM questions WHERE assessment_id IS NULL ORDER BY RANDOM()').all()
+    pool = db.prepare(`SELECT * FROM questions WHERE ${AVAILABLE_QUESTIONS} ORDER BY RANDOM()`).all()
   }
   if (pool.length === 0) return httpError(res, 400, 'No assessment questions available.')
   const count = Math.min(8, pool.length)
@@ -187,7 +531,7 @@ router.post('/assessments/:id/submit', requireRole('learner'), (req, res) => {
       prompt: d.prompt,
       competency: d.competency_name,
       your_answer: parseJson(d.response, null),
-      correct_answer: parseJson(d.correct_answer, []),
+      correct_answer: parseJson(correctAnswer(d), []),
       is_correct: Boolean(d.is_correct),
       explanation: d.explanation
     })),
@@ -308,7 +652,7 @@ router.post('/quizzes/:id/attempt', requireRole('learner'), (req, res) => {
       prompt: q.prompt,
       competency: comp ? comp.name : null,
       your_answer: given,
-      correct_answer: parseJson(q.correct_answer, []),
+      correct_answer: parseJson(correctAnswer(q), []),
       is_correct: ok,
       explanation: q.explanation,
       source_ref: q.source_ref,
@@ -439,7 +783,7 @@ router.get('/trainer/quizzes/:id/review', requireRole('trainer'), (req, res) => 
   const quiz = db.prepare(`SELECT q.*, c.name AS competency_name FROM quizzes q LEFT JOIN competencies c ON c.id = q.competency_id WHERE q.id = ?`).get(Number(req.params.id))
   if (!quiz) return httpError(res, 404, 'Quiz not found.')
   const questions = db.prepare(`SELECT q.* FROM quiz_questions qz JOIN questions q ON q.id = qz.question_id WHERE qz.quiz_id = ? ORDER BY qz.position`).all(quiz.id)
-  res.json({ quiz, questions: questions.map(q => ({ ...q, options: parseJson(q.options, []), correct_answer: parseJson(q.correct_answer, []) })) })
+  res.json({ quiz, questions: questions.map(q => ({ ...q, options: parseJson(q.options, []), correct_answer: parseJson(correctAnswer(q), []) })) })
 })
 
 router.put('/trainer/questions/:id', requireRole('trainer'), (req, res) => {
@@ -599,9 +943,24 @@ router.post('/assistant/ask', requireRole(), async (req, res) => {
   if (!question || typeof question !== 'string' || question.trim().length < 3) {
     return httpError(res, 400, 'question is required (min 3 chars).')
   }
-  const profile = db.prepare('SELECT job_role, interests FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
+  const profile = db.prepare('SELECT job_role, interests, learning_goals, learning_preferences, available_time, field_of_study FROM learner_profiles WHERE user_id = ?').get(req.user.sub)
   const gaps = db.prepare(`SELECT c.name FROM skill_gaps sg JOIN competencies c ON c.id = sg.competency_id WHERE sg.user_id = ? AND sg.gap > 0 ORDER BY sg.gap DESC LIMIT 3`).all(req.user.sub)
-  const context = profile ? `Role: ${profile.job_role || 'unspecified'}. Priority gaps: ${gaps.map(g => g.name).join(', ') || 'none recorded'}.` : null
+  let context = null
+  if (profile) {
+    const parseList = (s) => { if (!s) return []; try { const v = JSON.parse(s); return Array.isArray(v) ? v : [] } catch { return String(s).split(',').filter(Boolean) } }
+    const bits = []
+    if (profile.job_role) bits.push(`Role: ${profile.job_role}`)
+    if (profile.field_of_study) bits.push(`Field: ${profile.field_of_study}`)
+    const goals = parseList(profile.learning_goals)
+    if (goals.length) bits.push(`Goals: ${goals.join(', ')}`)
+    const prefs = parseList(profile.learning_preferences)
+    if (prefs.length) bits.push(`Prefers: ${prefs.join(', ')}`)
+    if (profile.available_time) bits.push(`Time: ${profile.available_time}`)
+    const interests = parseList(profile.interests)
+    if (interests.length) bits.push(`Interests: ${interests.join(', ')}`)
+    if (gaps.length) bits.push(`Priority gaps: ${gaps.map(g => g.name).join(', ')}`)
+    context = bits.join('. ')
+  }
   db.prepare('INSERT INTO assistant_messages (user_id, role, content) VALUES (?, ?, ?)').run(req.user.sub, 'user', String(question).slice(0, 2000))
   const reply = await assistantReply(String(question).slice(0, 2000), context)
   db.prepare('INSERT INTO assistant_messages (user_id, role, content, mode) VALUES (?, ?, ?, ?)').run(req.user.sub, 'assistant', reply.reply, reply.mode)

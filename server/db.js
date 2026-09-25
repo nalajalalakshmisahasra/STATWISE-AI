@@ -252,4 +252,60 @@ CREATE INDEX IF NOT EXISTS idx_progress_user ON progress_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_quiz ON quiz_attempts(quiz_id);
 `)
 
+// ---------- Additive migrations (safe for existing databases) ----------
+function columnNames (table) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name)
+}
+function addColumn (table, ddl) {
+  const name = ddl.match(/^"?([a-zA-Z_]+)"?\s/)[1]
+  if (!columnNames(table).includes(name)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+  }
+}
+
+// Registration passwords + email verification + login throttling.
+addColumn('users', 'password_hash TEXT')
+addColumn('users', 'password_salt TEXT')
+addColumn('users', 'email_verified INTEGER NOT NULL DEFAULT 0')
+// Role requested at registration. Accounts activate as 'learner'; a requested
+// trainer role is promoted on verification. 'admin' is NEVER self-serviceable —
+// administrators are provisioned by an existing admin (or the seed).
+addColumn('users', 'role_pending TEXT')
+addColumn('users', 'verification_code_hash TEXT')
+addColumn('users', 'verification_salt TEXT')
+addColumn('users', 'verification_expires TEXT')
+addColumn('users', 'verification_attempts INTEGER NOT NULL DEFAULT 0')
+addColumn('users', 'verification_last_sent TEXT')
+addColumn('users', 'verification_resends INTEGER NOT NULL DEFAULT 0')
+addColumn('users', 'failed_logins INTEGER NOT NULL DEFAULT 0')
+addColumn('users', 'locked_until TEXT')
+
+// Learner onboarding profile (spec §6). Kept on learner_profiles so the
+// personalization engine reads a single row.
+addColumn('learner_profiles', 'current_status TEXT')
+addColumn('learner_profiles', 'field_of_study TEXT')
+addColumn('learner_profiles', 'learning_goals TEXT') // JSON array
+addColumn('learner_profiles', 'skill_levels TEXT') // JSON: self-reported, never evidence
+addColumn('learner_profiles', 'learning_preferences TEXT') // JSON array
+addColumn('learner_profiles', 'available_time TEXT')
+addColumn('learner_profiles', 'onboarding_completed INTEGER NOT NULL DEFAULT 0')
+
+// Legacy seed rows stored correct_answer as a bare string while everything
+// else stores JSON. Normalize once (idempotent); grading and review screens
+// parse JSON and must see consistent storage.
+try {
+  const legacy = db.prepare("SELECT id, correct_answer, origin FROM questions WHERE correct_answer NOT LIKE '[%'").all()
+  for (const row of legacy) {
+    if (row.origin === 'seeded') {
+      // Bare-string seed values: wrap into a proper JSON array.
+      db.prepare('UPDATE questions SET correct_answer = ? WHERE id = ?').run(JSON.stringify([String(row.correct_answer)]), row.id)
+    } else {
+      // JSON-encoded string values: unwrap to the bare string (not an array).
+      db.prepare('UPDATE questions SET correct_answer = ? WHERE id = ?').run(String(row.correct_answer), row.id)
+    }
+  }
+} catch (e) {
+  console.warn('[migrate] correct_answer normalization skipped:', e.message)
+}
+
 module.exports = db

@@ -7,12 +7,18 @@ Status legend: ✅ implemented & verified · 🟡 implemented with documented de
 
 | PRD requirement | Where implemented | Verified by |
 |---|---|---|
-| Responsive landing page + language selection | `client/src/pages/Landing.jsx`, `locales/strings.js`, `LandingHeader` | manual + build; EN/HI/TE/TA render |
-| Demo access with roles + backend permission checks | `server/auth.js` (`requireRole`), `routes.js` guards | 38 API tests incl. 6 RBAC negatives |
-| Learner profile & competency framework | `learner_profiles`, `competencies`, `role_competency_requirements`; Profile page | API tests: profile save/validation |
+| Responsive landing page + language selection | `client/src/pages/Welcome.jsx` (language-first), `Landing.jsx`, `locales/strings.js`, `LandingHeader` | manual + build; EN/HI/TE/TA render |
+| Demo access with roles + backend permission checks | `server/auth.js` (`requireRole`), `routes.js` guards | 64 API tests incl. RBAC negatives |
+| **Full registration + password auth + OTP verification** | `routes.js: /auth/register, /auth/verify, /auth/resend, /auth/login`; `passwords.js` (scrypt); `otp.js` (labelled dev delivery) | tests: register→OTP→session, wrong OTP 401, expiry path, resend 429 cooldown, lockout 423, malformed 400, duplicate 409 |
+| **Server-side role assignment (no client escalation)** | registration accepts only learner/trainer; `admin` claim → 400; trainer promoted after verification | test: admin claim rejected; trainer-claim promoted post-verify |
+| **Learner onboarding wizard (7 steps, persisted)** | `learner/Onboarding.jsx`, `/profiles/onboarding`, route guard in `App.jsx` | tests: step persistence, refresh-safe state, completion flag, learner-only 403 |
+| **Personalized dashboard (`/dashboard/me`)** | `services.js: dashboardData`, `learner/Dashboard.jsx` | tests: focus progression onboarding→assessment→gap/reassess, profile echo |
+| **Explainable scored recommendation engine** | `services.js: generateRecommendations` — evidence (gaps/weak quizzes) vs relevance (interests/goals/field) | tests: gap recs cite “Assessment evidence”, interest basis never fabricates gaps |
+| Learner profile & competency framework | `learner_profiles`, `competencies`, `role_competency_requirements`; Profile page (onboarding fields editable) | API tests: profile save/validation |
 | Assessment submission & transparent scoring | `services.js: scoreAssessment/completeAssessment`, Assessment page | tests: scoring, breakdown, double-submit 409 |
 | Explainable skill-gap calculation | `services.js: gapReport` (evidence, limitation, next step) | tests: gap fields non-empty |
-| Personalized recommendations from seeded data | `services.js: generateRecommendations` (gap/interest/adaptive) | tests: rationale/priority/basis present |
+| Personalized recommendations from seeded data | `services.js: generateRecommendations` (gap/interest/adaptive + rationale + basis) | tests: rationale/priority/basis present; reassessment updates them |
+| Assessment → gaps → recommendations → progress → reassessment loop | submit recomputes gaps + recs; reassessment refreshes evidence | tests: second assessment changes gaps/results; recs follow evidence |
 | Persistent core records | `node:sqlite` file DB, WAL | server smoke + tests against live app |
 | Coherent learner dashboard + navigation | `learner/Dashboard.jsx`, `WorkspaceShell` | build + manual |
 
@@ -34,7 +40,7 @@ Status legend: ✅ implemented & verified · 🟡 implemented with documented de
 | Government resource discovery + integration panel | Integrations page, `/api/integrations` | tests: honest statuses |
 | AI assistant with provider abstraction + fallback | `ai.js: assistantReply`, Assistant page | tests: fallback mode asserted |
 | Adaptive recommendations | `services.js: adaptiveNextStep` (revise/practice/advance with reasons) | tests: next_step present + valid action |
-| Multilingual labels | `strings.js` (4 languages) | manual; persisted via `/auth/language` (tested) |
+| Multilingual labels | `strings.js` (4 languages; auth/onboarding/dashboard/profile strings added) | manual; persisted via `/auth/language` (tested); pre-login choice carried into registration |
 
 ## §6 Functional requirements detail
 
@@ -53,7 +59,7 @@ Status legend: ✅ implemented & verified · 🟡 implemented with documented de
 | §7 truthful integration labels; no invented links/IDs | ✅ | status panel + `*.example.gov.in` URLs |
 | §8.3 API areas | ✅ | auth/profiles/competencies/assessments/gaps/resources/recommendations/activities/progress/quizzes/trainer/admin/assistant/integrations/notifications |
 | §8.4 `.env.example`, no secrets, no browser exposure | ✅ | |
-| §11 security: input validation, server-side roles, secrets server-side, synthetic data | ✅ | RBAC tests; validation tests |
+| §11 security: input validation, server-side roles, secrets server-side, synthetic data | ✅ | RBAC tests; validation tests; scrypt passwords + hashed OTP with expiry/attempt/resend caps; login lockout; ownership checks |
 | §12 acceptance 1–15 | ✅ | see tests + manual script; E2E browser suite not automated (manual script provided) |
 
 ## §14 Out of scope (not built, per PRD)

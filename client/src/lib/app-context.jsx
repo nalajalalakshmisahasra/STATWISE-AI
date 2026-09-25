@@ -10,7 +10,17 @@ export function AppProvider ({ children }) {
 
   useEffect(() => {
     api.get('/api/auth/me')
-      .then(d => setUser(d.user))
+      .then(d => {
+        setUser(d.user)
+        // Server profile language wins over a stale cached choice, but a
+        // pre-login language selection is preserved through authentication by
+        // being sent with the register call and echoed back here.
+        if (d.user && d.user.language && LANGUAGES.some(l => l.code === d.user.language)) {
+          setLangState(d.user.language)
+          localStorage.setItem('statwise.lang', d.user.language)
+          document.documentElement.lang = d.user.language
+        }
+      })
       .catch(() => setUser(null))
   }, [])
 
