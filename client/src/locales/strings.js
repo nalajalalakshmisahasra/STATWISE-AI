@@ -202,7 +202,10 @@ export const STRINGS = {
     'profile.interestsHint': 'Interests shape which recommendations are relevant — gaps come from assessments.',
     'profile.roleError': 'Job role is required — it drives your competency expectations.',
     'profile.experienceError': 'Experience must be between 0 and 50.',
-    'profile.langHint': 'Applies immediately across the interface and is saved to your account.'
+    'profile.langHint': 'Applies immediately across the interface and is saved to your account.',
+    'onb.stepOf': 'Step {n} of {total}',
+    'dash.readiness': 'Evidence readiness',
+    'dash.readinessHint': 'Competencies with assessment evidence'
   },
   hi: {
     brand: 'स्टैटवाइज़',
@@ -403,7 +406,10 @@ export const STRINGS = {
     'profile.interestsHint': 'रुचियाँ बताती हैं कि कौन-सी सिफ़ारिशें प्रासंगिक हैं — अंतर मूल्यांकन से आते हैं।',
     'profile.roleError': 'नौकरी की भूमिका आवश्यक है — यह आपकी दक्षता अपेक्षाओं को तय करती है।',
     'profile.experienceError': 'अनुभव 0 और 50 के बीच होना चाहिए।',
-    'profile.langHint': 'पूरे इंटरफ़ेस पर तुरंत लागू होता है और आपके खाते में सहेजा जाता है।'
+    'profile.langHint': 'पूरे इंटरफ़ेस पर तुरंत लागू होता है और आपके खाते में सहेजा जाता है।',
+    'onb.stepOf': 'चरण {n} / {total}',
+    'dash.readiness': 'साक्ष्य तैयारी',
+    'dash.readinessHint': 'मूल्यांकन साक्ष्य वाली दक्षताएँ'
   },
   te: {
     brand: 'స్టాట్‌వైజ్',
@@ -604,7 +610,10 @@ export const STRINGS = {
     'profile.interestsHint': 'ఆసక్తులు ఏ సిఫారసులు సంబంధితమైనవో తెలియజేస్తాయి — లోపాలు మూల్యాంకనాల నుండి వస్తాయి.',
     'profile.roleError': 'ఉద్యోగ పాత్ర అవసరం — ఇది మీ సామర్థ్య అంచనాలను నిర్ణయిస్తుంది.',
     'profile.experienceError': 'అనుభవం 0 మరియు 50 మధ్య ఉండాలి.',
-    'profile.langHint': 'ఇంటర్‌ఫేస్ మొత్తంపై వెంటనే వర్తిస్తుంది మరియు మీ ఖాతాలో సేవ్ చేయబడుతుంది.'
+    'profile.langHint': 'ఇంటర్‌ఫేస్ మొత్తంపై వెంటనే వర్తిస్తుంది మరియు మీ ఖాతాలో సేవ్ చేయబడుతుంది.',
+    'onb.stepOf': 'దశ {n} / {total}',
+    'dash.readiness': 'సాక్ష్య సిద్ధత',
+    'dash.readinessHint': 'మూల్యాంకన సాక్ష్యం ఉన్న సామర్థ్యాలు'
   },
   ta: {
     brand: 'ஸ்டாட்வைஸ்',
@@ -805,7 +814,10 @@ export const STRINGS = {
     'profile.interestsHint': 'ஆர்வங்கள் எந்த பரிந்துரைகள் பொருத்தமானவை என்பதை தீர்மானிக்கின்றன — இடைவெளிகள் மதிப்பீடுகளிலிருந்து வருகின்றன.',
     'profile.roleError': 'பணி பங்கு தேவை — இது உங்கள் திறன் எதிர்பார்ப்புகளை நிர்ணயிக்கிறது.',
     'profile.experienceError': 'அனுபவம் 0 மற்றும் 50 க்கு இடையில் இருக்க வேண்டும்.',
-    'profile.langHint': 'முழு இடைமுகத்திலும் உடனடியாக பயன்படுத்தப்படுகிறது மற்றும் உங்கள் கணக்கில் சேமிக்கப்படுகிறது.'
+    'profile.langHint': 'முழு இடைமுகத்திலும் உடனடியாக பயன்படுத்தப்படுகிறது மற்றும் உங்கள் கணக்கில் சேமிக்கப்படுகிறது.',
+    'onb.stepOf': 'படி {n} / {total}',
+    'dash.readiness': 'சான்ற தயார்நிலை',
+    'dash.readinessHint': 'மதிப்பீட்டு சான்றுள்ள திறன்கள்'
   }
 }
 

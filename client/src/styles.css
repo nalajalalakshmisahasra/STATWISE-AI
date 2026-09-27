@@ -1,72 +1,240 @@
-/* STATWISE design tokens — derived from the logo: deep teal, warm off-white, amber + aqua accents. */
+/* ============================================================
+   STATWISE design system — "Ink & Signal"
+   A restrained, professional intelligence-platform aesthetic:
+   deep ink surfaces, one confident teal accent, amber reserved
+   for attention, generous whitespace, quiet depth.
+   ============================================================ */
+
 :root {
-  --teal-950: #07302e;
-  --teal-900: #0b423f;
-  --teal-800: #115451;
-  --teal-700: #176865;
-  --teal-600: #1f7f7b;
-  --teal-500: #2c9691;
-  --teal-400: #4fb0aa;
-  --teal-300: #7fcac5;
-  --teal-200: #b3e2de;
-  --teal-100: #dcf1ef;
+  /* ---- Surfaces ---- */
+  --paper: #f7f6f2;          /* app canvas: warm paper, not clinical white */
+  --surface: #ffffff;        /* raised cards */
+  --surface-2: #eff3f2;      /* subtle insets, wells, table striping */
+  --surface-3: #e4eae8;      /* hover fills, pressed chips */
+  --ink-surface: #0f1e1d;    /* dark canvas (hero, rails) */
+  --ink-surface-2: #14302d;  /* dark raised */
 
-  --amber-600: #c07c14;
-  --amber-500: #d9962a;
-  --amber-400: #e8ab4a;
-  --amber-100: #fbeed3;
+  /* ---- Text ---- */
+  --ink-950: #0c1a19;
+  --ink-900: #132726;
+  --ink-700: #2e4341;
+  --ink-600: #42585a;
+  --ink-500: #5a6f6c;
+  --ink-400: #7d8f8c;
+  --ink-300: #a7b5b2;
+  --ink-200: #cdd8d5;
+  --ink-100: #e2e9e7;
+  --ink-50:  #eef2f1;
 
-  --aqua-500: #2596a8;
+  /* ---- Accent: signal teal (primary) ---- */
+  --teal-950: #082b29;
+  --teal-900: #0c3d3a;
+  --teal-800: #10504d;
+  --teal-700: #16615d;
+  --teal-600: #1d7772;
+  --teal-500: #278c86;
+  --teal-400: #4aa8a1;
+  --teal-300: #7fc4be;
+  --teal-200: #b5ddd9;
+  --teal-100: #daeeeb;
+  --teal-50:  #eaf6f4;
 
-  --ink-900: #10211f;
-  --ink-700: #2e4441;
-  --ink-500: #556b68;
-  --ink-400: #718783;
-  --ink-200: #c9d6d4;
-  --ink-100: #e5eeee;
-  --ink-50: #f4f8f8;
+  /* ---- Signal amber (attention only) ---- */
+  --amber-700: #8a5a10;
+  --amber-600: #a87316;
+  --amber-500: #c98f1e;
+  --amber-400: #ddaa42;
+  --amber-300: #ecc87c;
+  --amber-100: #f9edd2;
+  --amber-50:  #fdf7e9;
 
-  --paper: #faf7f0;
-  --white: #ffffff;
-
-  --danger: #b3423a;
-  --danger-bg: #f9e7e5;
-  --success: #2c7a4b;
-  --success-bg: #e3f2e9;
-  --warn: #a05a12;
+  /* ---- Status ---- */
+  --success: #22754c;
+  --success-bg: #e2f2e9;
+  --danger: #a63a32;
+  --danger-bg: #f9e8e5;
+  --warn: #a06212;
   --warn-bg: #fbeed3;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --shadow-sm: 0 1px 2px rgba(16, 33, 31, 0.06), 0 1px 3px rgba(16, 33, 31, 0.08);
-  --shadow-md: 0 4px 12px rgba(16, 33, 31, 0.1);
-  --shadow-lg: 0 12px 32px rgba(9, 40, 38, 0.16);
+  /* ---- (legacy aliases kept so older inline styles stay coherent) ---- */
+  --white: #ffffff;
+  --aqua-500: #278c86;
+  --ink-surface-line: #1d3a37;
 
-  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  /* ---- Typography ---- */
+  --font-display: "Outfit", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ---- Geometry ---- */
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --maxw: 1320px;
+
+  /* ---- Elevation: tinted, quiet, consistent top-light ---- */
+  --shadow-1: 0 1px 2px rgba(12, 40, 38, 0.05), 0 1px 2px rgba(12, 40, 38, 0.04);
+  --shadow-2: 0 2px 6px rgba(12, 40, 38, 0.07), 0 6px 18px rgba(12, 40, 38, 0.05);
+  --shadow-3: 0 10px 30px rgba(10, 36, 34, 0.14), 0 2px 8px rgba(10, 36, 34, 0.06);
+  --shadow-glow-teal: 0 0 0 1px rgba(39, 140, 134, 0.35), 0 6px 24px rgba(39, 140, 134, 0.22);
+
+  /* legacy aliases */
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
 }
 
 * { box-sizing: border-box; }
 
 html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
 
 body {
   font-family: var(--font-body);
   background: var(--paper);
   color: var(--ink-900);
-  line-height: 1.55;
+  font-size: 14.5px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-#root { min-height: 100vh; }
+#root { min-height: 100dvh; }
 
-h1, h2, h3, h4 { line-height: 1.2; margin: 0 0 0.5rem; font-weight: 700; letter-spacing: -0.01em; }
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  line-height: 1.14;
+  margin: 0 0 0.4rem;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+  color: var(--ink-950);
+}
 
+p { text-wrap: pretty; }
 a { color: var(--teal-700); }
 
-:focus-visible { outline: 3px solid var(--amber-500); outline-offset: 2px; border-radius: 4px; }
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+:focus-visible {
+  outline: 2.5px solid var(--teal-500);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
+
+::selection { background: rgba(39, 140, 134, 0.22); }
+
+/* ---------- Motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes sw-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes sw-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sw-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+@keyframes sw-spin { to { transform: rotate(360deg); } }
+
+.anim-in { animation: sw-fade-up 0.45s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-in-1 { animation: sw-fade-up 0.45s cubic-bezier(0.22, 0.9, 0.3, 1) 0.05s both; }
+.anim-in-2 { animation: sw-fade-up 0.45s cubic-bezier(0.22, 0.9, 0.3, 1) 0.12s both; }
+.anim-in-3 { animation: sw-fade-up 0.45s cubic-bezier(0.22, 0.9, 0.3, 1) 0.2s both; }
+
+/* ---------- Shared primitives (used by components/*.jsx) ---------- */
+
+/* Panel: the standard raised surface */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--ink-100);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+/* Section label: small caps eyebrow above content blocks */
+.eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+/* Metric numerals */
+.metric {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Dark ambient surface with the STATWISE glow */
+.ink-scene {
+  background:
+    radial-gradient(1100px 640px at 12% -12%, rgba(39, 140, 134, 0.30), transparent 58%),
+    radial-gradient(900px 560px at 92% 112%, rgba(201, 143, 30, 0.16), transparent 55%),
+    radial-gradient(720px 480px at 78% 8%, rgba(74, 168, 161, 0.12), transparent 60%),
+    var(--ink-surface);
+  color: var(--paper);
+}
+
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.55;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.05'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 200;
+  background: var(--ink-950);
+  color: var(--paper);
+  padding: 9px 16px;
+  border-radius: 0 0 10px 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus { top: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Global interactive feel */
+button:not(:disabled),
+select,
+a,
+[role='button'] {
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease,
+    transform 0.14s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+button:not(:disabled):hover { filter: brightness(1.05); }
+button:not(:disabled):active { transform: translateY(1px) scale(0.995); }
+
+/* Scrollbars in nav rails / wide tables */
+.thin-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: var(--ink-200); border-radius: 99px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }

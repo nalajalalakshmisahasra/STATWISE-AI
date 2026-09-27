@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../../lib/api.js'
 import { useApp } from '../../lib/app-context.jsx'
 import { PageTitle } from '../../components/layout.jsx'
-import { Card, Badge, Button, Spinner, ErrorState, EmptyState, LevelBadge } from '../../components/ui.jsx'
+import { Card, Badge, Button, Spinner, ErrorState, EmptyState, LevelBadge, Segmented, Icon } from '../../components/ui.jsx'
 
 export default function Gaps () {
   const { t } = useApp()
@@ -29,13 +29,16 @@ export default function Gaps () {
         title={t('gaps.title')}
         subtitle={data.role ? `Expected levels come from the illustrative ${data.role} framework. Every row shows its evidence and limitations.` : 'Set a job role in your profile to see expectations.'}
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
-            {['all', 'Statistical', 'Technical'].map(d => (
-              <Button key={d} size="sm" variant={domain === d ? 'primary' : 'secondary'} onClick={() => setDomain(d)}>
-                {d === 'all' ? 'All domains' : d}
-              </Button>
-            ))}
-          </div>
+          <Segmented
+            ariaLabel="Domain filter"
+            value={domain}
+            onChange={setDomain}
+            options={[
+              { value: 'all', label: 'All domains' },
+              { value: 'Statistical', label: 'Statistical' },
+              { value: 'Technical', label: 'Technical' }
+            ]}
+          />
         }
       />
 
@@ -46,11 +49,18 @@ export default function Gaps () {
       )}
 
       {withGap.length > 0 && (
-        <Card style={{ marginBottom: 18, borderLeft: '4px solid var(--amber-500)', background: 'var(--amber-100)' }}>
-          <strong>{withGap.length} competenc{withGap.length === 1 ? 'y is' : 'ies are'} below role expectation.</strong>{' '}
-          <span style={{ fontSize: 13.8 }}>Each includes the suggested next step; recommendations are pre-matched to these gaps.</span>
-          <div style={{ marginTop: 10 }}><Link to="/learner/recommendations"><Button size="sm" variant="secondary">{t('recs.title')} →</Button></Link></div>
-        </Card>
+        <div style={{
+          marginBottom: 18, borderRadius: 'var(--radius-md)', padding: '14px 18px',
+          background: 'var(--amber-50)', border: '1px solid var(--amber-300)',
+          display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap'
+        }}>
+          <Icon name="chart" size={18} color="var(--amber-600)" />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <strong>{withGap.length} competenc{withGap.length === 1 ? 'y is' : 'ies are'} below role expectation.</strong>{' '}
+            <span style={{ fontSize: 13.5 }}>Recommendations are pre-matched to these gaps.</span>
+          </div>
+          <Link to="/learner/recommendations"><Button size="sm" variant="secondary">{t('recs.title')} →</Button></Link>
+        </div>
       )}
 
       <div style={{ display: 'grid', gap: 14 }}>

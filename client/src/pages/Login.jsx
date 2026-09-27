@@ -97,7 +97,7 @@ export default function Login () {
     } catch (e2) { setErr(e2.message) } finally { setBusy(false) }
   }
 
-  const containerStyle = { minHeight: '100vh', background: 'var(--paper)', display: 'flex', flexDirection: 'column' }
+  const containerStyle = { minHeight: '100dvh', background: 'var(--paper)', display: 'flex', flexDirection: 'column' }
 
   return (
     <div style={containerStyle}>

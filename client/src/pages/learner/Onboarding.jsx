@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api.js'
 import { useApp } from '../../lib/app-context.jsx'
-import { Logo, Button, Card, Field, Badge, inputStyle, Spinner, ErrorState } from '../../components/ui.jsx'
+import { Logo, Button, Card, Field, Badge, Icon, OptionCard, ProgressBar, inputStyle, Spinner, ErrorState } from '../../components/ui.jsx'
 
 const STATUSES = ['student', 'working_professional', 'researcher', 'government_employee', 'trainer', 'other']
 const FIELDS = ['Statistics', 'Data Science', 'Economics', 'Mathematics', 'Computer Science', 'Research', 'Public Administration']
@@ -141,40 +141,45 @@ export default function Onboarding () {
   }
 
   const pct = Math.round(((step + 1) / STEPS.length) * 100)
-  const chip = (selected) => ({
-    padding: '9px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 14, fontWeight: 600,
-    border: selected ? '2px solid var(--teal-700)' : '1px solid var(--ink-200)',
-    background: selected ? 'var(--teal-100)' : 'var(--white)', color: 'var(--ink-900)', fontFamily: 'inherit'
-  })
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--ink-50)' }}>
-      <header style={{ background: 'var(--teal-900)', color: 'var(--paper)', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Logo light size={30} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Badge kind="amber" style={{ background: 'rgba(232,171,74,.18)', color: 'var(--amber-400)' }}>{t('role.' + (user ? user.role : 'learner'))}</Badge>
-          <span style={{ fontSize: 13.5, opacity: 0.85 }}>{user && user.name}</span>
-        </div>
-      </header>
-      <main style={{ maxWidth: 680, margin: '0 auto', padding: '30px 18px 70px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }} aria-hidden="true">
-          <div style={{ flex: 1, height: 6, background: 'var(--teal-100)', borderRadius: 999, overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, var(--teal-600), var(--teal-400))', borderRadius: 999, transition: 'width .3s ease' }} />
-          </div>
-          <span style={{ fontSize: 12.5, color: 'var(--ink-500)', fontWeight: 600 }}>{step + 1} / {STEPS.length}</span>
+    <div style={{ minHeight: '100dvh', background: 'var(--paper)' }}>
+      <main style={{ maxWidth: 860, margin: '0 auto', padding: '10px 18px 80px' }}>
+        {/* Guided progress rail: past ✓ · current highlighted · upcoming dimmed */}
+        <ol aria-label="Onboarding progress" style={{ listStyle: 'none', display: 'flex', gap: 6, padding: 0, margin: '0 0 10px' }}>
+          {STEPS.map((s, i) => (
+            <li key={s.key} aria-current={i === step ? 'step' : undefined} style={{ flex: 1 }}>
+              <div style={{
+                height: 5, borderRadius: 99,
+                background: i < step ? 'var(--teal-500)' : i === step ? 'var(--amber-500)' : 'var(--surface-3)',
+                transition: 'background-color .25s ease'
+              }} />
+              <div style={{
+                fontSize: 10.5, marginTop: 6, fontWeight: 650, letterSpacing: '0.04em',
+                color: i === step ? 'var(--amber-600)' : i < step ? 'var(--teal-700)' : 'var(--ink-300)',
+                textTransform: 'uppercase', textAlign: 'center'
+              }}>
+                {i < step ? '✓' : i + 1}
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
+          <span className="eyebrow">{t('onb.stepOf', { n: step + 1, total: STEPS.length })}</span>
+          <span className="metric" style={{ fontSize: 13, color: 'var(--ink-500)' }}>{pct}%</span>
         </div>
 
-        <Card>
-          <h1 style={{ fontSize: 21, color: 'var(--teal-950)', marginBottom: 4 }}>{STEPS[step].title}</h1>
-          <p style={{ color: 'var(--ink-500)', marginTop: 0, fontSize: 14 }}>{STEPS[step].sub}</p>
+        <Card className="anim-in" style={{ padding: 30 }}>
+          <h1 style={{ fontSize: 23, marginBottom: 4 }}>{STEPS[step].title}</h1>
+          <p style={{ color: 'var(--ink-500)', marginTop: 0, fontSize: 14, marginBottom: 22 }}>{STEPS[step].sub}</p>
           {err && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13.5, marginBottom: 10 }}>{err.message}</div>}
 
           {step === 0 && (
-            <div role="radiogroup" aria-label={STEPS[0].title} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+            <div role="radiogroup" aria-label={STEPS[0].title} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
               {STATUSES.map(s => (
-                <button key={s} type="button" role="radio" aria-checked={form.current_status === s} style={chip(form.current_status === s)} onClick={() => set('current_status', s)}>
-                  {t('onb.status.' + s)}
-                </button>
+                <OptionCard key={s} role="radio" aria-checked={form.current_status === s} multi={false}
+                  selected={form.current_status === s} onClick={() => set('current_status', s)}
+                  title={t('onb.status.' + s)} />
               ))}
             </div>
           )}
@@ -184,43 +189,56 @@ export default function Onboarding () {
               <Field label={t('onb.fieldLabel')}>
                 <input style={inputStyle} value={form.field_of_study} onChange={e => set('field_of_study', e.target.value)} placeholder={t('onb.fieldPlaceholder')} />
               </Field>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <div role="radiogroup" aria-label={STEPS[1].title} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {FIELDS.map(f => (
-                  <button key={f} type="button" style={chip(form.field_of_study === f)} onClick={() => set('field_of_study', f)}>{f}</button>
+                  <button key={f} type="button" aria-pressed={form.field_of_study === f}
+                    style={{
+                      padding: '8px 15px', borderRadius: 999, cursor: 'pointer', fontSize: 13.3, fontWeight: 600, fontFamily: 'inherit',
+                      border: form.field_of_study === f ? '1.5px solid var(--teal-600)' : '1px solid var(--ink-200)',
+                      background: form.field_of_study === f ? 'var(--teal-50)' : 'var(--surface)',
+                      color: form.field_of_study === f ? 'var(--teal-800)' : 'var(--ink-700)'
+                    }}
+                    onClick={() => set('field_of_study', f)}>{f}</button>
                 ))}
               </div>
             </>
           )}
 
           {step === 2 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="group" aria-label={STEPS[2].title}>
+            <div role="group" aria-label={STEPS[2].title} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 9 }}>
               {INTERESTS.map(i => (
-                <button key={i} type="button" aria-pressed={form.interests.includes(i)} style={chip(form.interests.includes(i))} onClick={() => toggle('interests', i)}>{i}</button>
+                <OptionCard key={i} multi selected={form.interests.includes(i)} onClick={() => toggle('interests', i)} title={i} />
               ))}
             </div>
           )}
 
           {step === 3 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="group" aria-label={STEPS[3].title}>
+            <div role="group" aria-label={STEPS[3].title} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 9 }}>
               {GOALS.map(g => (
-                <button key={g} type="button" aria-pressed={form.learning_goals.includes(g)} style={chip(form.learning_goals.includes(g))} onClick={() => toggle('learning_goals', g)}>{g}</button>
+                <OptionCard key={g} multi selected={form.learning_goals.includes(g)} onClick={() => toggle('learning_goals', g)} title={g} />
               ))}
             </div>
           )}
 
           {step === 4 && (
             <>
-              <p style={{ fontSize: 13.5, color: 'var(--ink-500)', background: 'var(--amber-100)', borderRadius: 10, padding: '10px 14px' }}>
-                {t('onb.selfLevelNote')}
-              </p>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--amber-50)', border: '1px solid var(--amber-100)', borderRadius: 'var(--radius-md)', padding: '11px 14px', marginBottom: 16 }}>
+                <Icon name="bell" size={16} color="var(--amber-600)" style={{ marginTop: 2 }} />
+                <p style={{ fontSize: 13, color: 'var(--amber-700)', margin: 0 }}>{t('onb.selfLevelNote')}</p>
+              </div>
               <div style={{ display: 'grid', gap: 12 }}>
                 {['Sampling', 'Data Visualization', 'Python', 'SQL', 'Survey Design'].map(comp => (
-                  <div key={comp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <div key={comp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--ink-50)', paddingBottom: 10 }}>
                     <span style={{ fontWeight: 600, fontSize: 14 }}>{comp}</span>
                     <div role="radiogroup" aria-label={comp} style={{ display: 'flex', gap: 6 }}>
                       {LEVELS.map(l => (
                         <button key={l} type="button" role="radio" aria-checked={form.skill_levels[comp] === l}
-                          style={{ ...chip(form.skill_levels[comp] === l), padding: '6px 12px', fontSize: 13 }}
+                          style={{
+                            padding: '6px 13px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit',
+                            border: form.skill_levels[comp] === l ? '1.5px solid var(--teal-600)' : '1px solid var(--ink-200)',
+                            background: form.skill_levels[comp] === l ? 'var(--teal-50)' : 'var(--surface)',
+                            color: form.skill_levels[comp] === l ? 'var(--teal-800)' : 'var(--ink-500)'
+                          }}
                           onClick={() => set('skill_levels', { ...form.skill_levels, [comp]: l })}>
                           {t('onb.level.' + l)}
                         </button>
@@ -233,20 +251,18 @@ export default function Onboarding () {
           )}
 
           {step === 5 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="group" aria-label={STEPS[5].title}>
+            <div role="group" aria-label={STEPS[5].title} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 9 }}>
               {PREFS.map(p => (
-                <button key={p} type="button" aria-pressed={form.learning_preferences.includes(p)} style={chip(form.learning_preferences.includes(p))} onClick={() => toggle('learning_preferences', p)}>{p}</button>
+                <OptionCard key={p} multi selected={form.learning_preferences.includes(p)} onClick={() => toggle('learning_preferences', p)} title={p} />
               ))}
             </div>
           )}
 
           {step === 6 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10, marginBottom: 18 }} role="group" aria-label={STEPS[6].title}>
+              <div role="group" aria-label={STEPS[6].title} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 9, marginBottom: 20 }}>
                 {TIMES.map(tm => (
-                  <button key={tm.code} type="button" aria-pressed={form.available_time === tm.code} style={chip(form.available_time === tm.code)} onClick={() => set('available_time', tm.code)}>
-                    {t('onb.time.' + tm.code)}
-                  </button>
+                  <OptionCard key={tm.code} selected={form.available_time === tm.code} onClick={() => set('available_time', tm.code)} title={t('onb.time.' + tm.code)} />
                 ))}
               </div>
               <Field label={t('onb.roleLabel')} required hint={t('onb.roleHint')}>
@@ -258,10 +274,10 @@ export default function Onboarding () {
             </>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 22 }}>
-            <Button variant="ghost" onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0 || saving}>{t('onb.back')}</Button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 26, paddingTop: 18, borderTop: '1px solid var(--ink-50)' }}>
+            <Button variant="ghost" onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0 || saving}>← {t('onb.back')}</Button>
             {step < STEPS.length - 1
-              ? <Button onClick={next} loading={saving} disabled={!STEPS[step].done()}>{t('onb.next')}</Button>
+              ? <Button onClick={next} loading={saving} disabled={!STEPS[step].done()}>{t('onb.next')} →</Button>
               : <Button onClick={finish} loading={saving} disabled={!form.available_time}>{t('onb.finish')}</Button>}
           </div>
         </Card>

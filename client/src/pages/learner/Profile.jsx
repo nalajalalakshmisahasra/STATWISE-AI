@@ -88,9 +88,10 @@ export default function LearnerProfile () {
     <button
       key={label} type="button" aria-pressed={selected} onClick={onClick}
       style={{
-        padding: '7px 13px', borderRadius: 999, cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
-        border: selected ? '2px solid var(--teal-700)' : '1px solid var(--ink-200)',
-        background: selected ? 'var(--teal-100)' : 'var(--white)', color: 'var(--ink-900)', fontFamily: 'inherit'
+        padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+        border: selected ? '1.5px solid var(--teal-600)' : '1px solid var(--ink-200)',
+        background: selected ? 'var(--teal-50)' : 'var(--surface)',
+        color: selected ? 'var(--teal-800)' : 'var(--ink-600)', fontFamily: 'inherit'
       }}
     >{label}</button>
   )
@@ -106,7 +107,8 @@ export default function LearnerProfile () {
 
       <form onSubmit={save} noValidate style={{ maxWidth: 760 }}>
         <Card>
-          <h3 style={{ marginBottom: 14 }}>{t('profile.accountSection')}</h3>
+          <h3 style={{ marginBottom: 2 }}>{t('profile.accountSection')}</h3>
+          <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-400)' }}>{t('profile.langHint')}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0 18px' }}>
             <Field label={t('auth.name')}>
               <input style={inputStyle} value={(user && user.name) || ''} disabled />

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../../lib/api.js'
 import { useApp } from '../../lib/app-context.jsx'
 import { PageTitle } from '../../components/layout.jsx'
-import { Card, Badge, Button, Spinner, ErrorState, EmptyState, SuccessNote } from '../../components/ui.jsx'
+import { Card, Badge, Button, Spinner, ErrorState, EmptyState, SuccessNote, Segmented, Icon } from '../../components/ui.jsx'
 
 const TYPE_ICON = { course: '📘', case_study: '🧩', module: '🛠', video: '🎬', reading: '📄', practice: '✏️' }
 
@@ -49,11 +49,12 @@ export default function Recommendations () {
         title={t('recs.title')}
         subtitle="Every recommendation shows why it was suggested, what outcome to expect, and where it comes from. Sample provider entries are labelled."
         actions={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {bases.map(b => (
-              <Button key={b.key} size="sm" variant={filter === b.key ? 'primary' : 'secondary'} onClick={() => setFilter(b.key)}>{b.label}</Button>
-            ))}
-          </div>
+          <Segmented
+            ariaLabel="Recommendation basis"
+            value={filter}
+            onChange={setFilter}
+            options={bases.map(b => ({ value: b.key, label: b.label }))}
+          />
         }
       />
       {note && <div style={{ marginBottom: 14 }}><SuccessNote>{note}</SuccessNote></div>}
@@ -66,11 +67,14 @@ export default function Recommendations () {
         : (
           <div style={{ display: 'grid', gap: 14 }}>
             {visible.map(r => (
-              <Card key={r.id} style={{ borderLeft: `4px solid ${r.priority === 'high' ? 'var(--danger)' : r.priority === 'medium' ? 'var(--amber-500)' : 'var(--teal-400)'}` }}>
+              <Card key={r.id} hover style={{ borderLeft: `4px solid ${r.priority === 'high' ? 'var(--danger)' : r.priority === 'medium' ? 'var(--amber-500)' : 'var(--teal-400)'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 260 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
-                      <span aria-hidden="true">{TYPE_ICON[r.resource_type] || '📘'}</span>
+                      <span aria-hidden="true" style={{
+                        width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                        background: 'var(--teal-50)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15
+                      }}>{TYPE_ICON[r.resource_type] || '📘'}</span>
                       <h3 style={{ fontSize: 16, margin: 0 }}>{r.title}</h3>
                       <Badge kind="teal">{r.competency_name}</Badge>
                       <Badge kind={r.source_type === 'verified' ? 'green' : 'neutral'}>
